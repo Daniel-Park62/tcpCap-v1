@@ -1,0 +1,45 @@
+groupadd mysql
+useradd -g mysql mysql
+cd /usr/local
+tar -zxvpf /path-to/mariadb-VERSION-OS.tar.gz
+ln -s mariadb-VERSION-OS mysql
+cd mysql
+
+yum install gcc gcc-c++ libtermcap-devel gdbm-devel zlib* libxml* freetype* libpng* libjpeg* iconv flex gmp ncurses-devel cmake.x86_64 libaio -y
+
+cmake ../mariadb-10.4.12 -DWITH_READLINE=1 -DWITH_READLINE=1 -DWITH_SSL=bundled -DWITH_ZLIB=system -DDEFAULT_CHARSET=utf8 -DDEFAULT_COLLATION=utf8_general_ci -DENABLED_LOCAL_INFILE=1 -DWITH_EXTRA_CHARSETS=all -DWITH_ARIA_STORAGE_ENGINE=1 -DWITH_XTRADB_STORAGE_ENGINE=1 -DWITH_ARCHIVE_STORAGE_ENGINE=1 -DWITH_INNOBASE_STORAGE_ENGINE=1 -DWITH_PARTITION_STORAGE_ENGINE=1 -DWITH_BLACKHOLE_STORAGE_ENGINE=1 -DWITH_FEDERATEDX_STORAGE_ENGINE=1 -DWITH_PERFSCHEMA_STORAGE_ENGINE=1 -DCMAKE_INSTALL_PREFIX=/usr/local/mariadb -DMYSQL_DATADIR=/home/mysql/mdata
+
+cmake ../mariadb-10.4.12 -LH -DCMAKE_INSTALL_PREFIX=/usr/local/mariadb -DMYSQL_DATADIR=/home/mysql/mdata
+
+make && make install
+
+chown mysql:mysql -R /usr/local/mariadb
+chmod 755 /usr/local/mariadb -R
+
+cd /usr/local/mariadb/scripts
+
+./mysql_install_db --user=mysql --basedir=/usr/local/mariadb --datadir=/home/mysql/mdata
+
+====
+Two all-privilege accounts were created.
+One is root@localhost, it has no password, but you need to
+be system 'root' user to connect. Use, for example, sudo mysql
+The second is mysql@localhost, it has no password either, but
+you need to be the system 'mysql' user to connect.
+After connecting you can set the password, if you would need to be
+able to connect as any of these users with a password and without sudo
+
+See the MariaDB Knowledgebase at http://mariadb.com/kb or the
+MySQL manual for more instructions.
+
+You can start the MariaDB daemon with:
+cd '/usr/local/mariadb' ; /usr/local/mariadb/bin/mysqld_safe --datadir='/home/mysql/mdata'
+
+You can test the MariaDB daemon with mysql-test-run.pl
+cd '/usr/local/mariadb/mysql-test' ; perl mysql-test-run.pl
+
+Please report any problems at http://mariadb.org/jira
+====
+
+chown mysql:mysql -R /usr/local/mariadb
+chmod 755 /usr/local/mariadb -R

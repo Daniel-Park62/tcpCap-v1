@@ -1,0 +1,104 @@
+export OPENSSL_INCLUDE_DIR=/usr/local/src/openssl/include/openssl
+export OPENSSL_ROOT_DIR=/usr/local/ssl 
+export OPENSSL_LIBRARIES=/usr/local/lib
+
+./config  -fPIC shared
+
+
+ /usr/local/victolee/mysql/scripts/mysql_install_db \
+
+--defaults-file=/usr/local/victolee/mysql/my.cnf \
+
+--user=mysql \
+
+--basedir=/usr/local/victolee/mysql/ \
+
+--datadir=/usr/local/victolee/mysql/data \
+
+--explicit_defaults_for_timestamp=on
+
+firewall-cmd --add-port=3306/tcp
+
+[client]
+port            = 3306
+socket         = /tmp/mysql.sock
+character-set   = utf8
+
+# Here follows entries for some specific programs
+
+# The MySQL server
+[mysqld]
+port            = 3306
+socket         = /usr/local/victolee/mysql/tmp/mysql.sock
+key_buffer_size = 256M
+max_allowed_packet = 1M
+table_open_cache = 256
+sort_buffer_size = 1M
+read_buffer_size = 1M
+read_rnd_buffer_size = 4M
+myisam_sort_buffer_size = 64M
+thread_cache_size = 8
+query_cache_size= 16M
+# Try number of CPU's*2 for thread_concurrency
+thread_concurrency = 8
+
+character-set-server=utf8
+collation-server=utf8_general_ci
+
+init_connect=SET collation_connection=utf8_general_ci
+init_connect=SET NAMES utf8
+init-connect='set autocommit=0'
+
+
+[mysqldump]
+quick
+max_allowed_packet = 16M
+
+[mysql]
+no-auto-rehash
+default-character-set = utf8
+# Remove the next comment character if you are not familiar with SQL
+#safe-updates
+
+[myisamchk]
+key_buffer_size = 128M
+sort_buffer_size = 128M
+read_buffer = 2M
+write_buffer = 2M
+
+[mysqlhotcopy]
+interactive-timeout
+
+
+
+========================
+[Unit]
+Description=MySQL Community Server
+After=network.target
+After=syslog.target
+
+[Install]
+WantedBy=multi-user.target
+Alias=mysql.service
+
+[Service]
+User=mysql
+Group=mysql
+
+# Execute pre and post scripts as root
+PermissionsStartOnly=true
+
+# Needed to create system tables etc.
+#ExecStartPre=
+
+# Start main service
+ExecStart=/home/mysql/mariadb/bin/mysqld_safe  --datadir=/home/mysql/mariadb/data
+
+# Don't signal startup success before a ping works
+#ExecStartPost=
+
+# Give up if ping don't get an answer
+TimeoutSec=300
+
+Restart=always
+PrivateTmp=false

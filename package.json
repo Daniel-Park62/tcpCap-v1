@@ -1,0 +1,17 @@
+{
+  "name": "newv",
+  "version": "1.0.0",
+  "description": "aqt tool",
+  "main": "aqtrcvDb.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "mariadb": "^2.5.0"
+  }
+}
