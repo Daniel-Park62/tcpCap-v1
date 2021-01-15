@@ -9,9 +9,7 @@ const moment = require('moment');
 const mysql_dbc = require('./db/db_con');
 const con = mysql_dbc.init() ;
 const { spawn } = require('child_process');
-if (con.isValid() ) {
-  console.info('mariadb is connected successfully ' );
-}
+
 con.query("SELECT * FROM tconfig LIMIT 1", (err,rows) =>
         {
           if (err) {
@@ -19,7 +17,6 @@ con.query("SELECT * FROM tconfig LIMIT 1", (err,rows) =>
           } else {
             console.log("rows:", rows[0].id, rows[0].pass1); //[ {val: 1}, meta: ... ]
           }
-
   }) ;
 // const fs = require('fs');
 // const rr = fs.createReadStream('test01.pcap');
@@ -37,7 +34,7 @@ con.query("SELECT * FROM tconfig LIMIT 1", (err,rows) =>
 // });
 // process.stdin.on('end', console.log('end !!'));
 
-const child = spawn('perl ', ['aqtRealrcv.pl ', '-d ' + dstv ], { shell: true });
+const child = spawn('perl ', ['aqtRealrcv.pl ', dstv ], { shell: true });
 
 // const child = spawn('ls ', ['-l'], { shell: true } ).on('error',err => console.error('onerror:',err) );
 child.on('exit', function(code) {
@@ -76,6 +73,8 @@ function dataHandle(stream ) {
 
       let data ;
       data = stream.read(szn)  ;
+      console.log(data.toString()) ;
+      continue;
       let srcip = data.slice(0,30).toString() ;
       let srcport = data.readUInt16BE(30) ;
       let dstip = data.slice(32,62).toString() ;
@@ -100,7 +99,7 @@ function dataHandle(stream ) {
 
       con.query("INSERT INTO TTCPPACKET \
                 (TCODE,O_STIME,STIME,RTIME, SRCIP,SRCPORT,DSTIP,DSTPORT,PROTO, METHOD,URI,SEQNO,ACKNO,RCODE,slen,rlen,SDATA,RDATA, cdate) values \
-                ('TH01',?,?,?,?,?,?,?,'1',?,?,?,?,?,?,?,?, ?,now() )" ,
+                ('TH02',?,?,?,?,?,?,?,'1',?,?,?,?,?,?,?,?, ?,now() )" ,
                 [ stime,stime, rtime, srcip,srcport,dstip,dstport,
                   muri[1],muri[2], seqno, ackno,rcode,Buffer.byteLength(sdata),Buffer.byteLength(rdata),sdata, rdata],
                   (err, dt) => {
@@ -113,19 +112,19 @@ function dataHandle(stream ) {
   console.log( 'while end ');
 }
 
-child.stdout.on('readable', () => dataHandle(child.stdout) ) ;
+child.stdout.on('readable', () => dataHandle(child.stdout));
 // child.stdout.on('data', data => console.log('data:',data) ) ;
 // setInterval(() => { console.log(child.stdout.readableFlowing, child.stdout.isPaused() , child.stdout.destroyed, child.stdout.readable) }, 1000) ;
 
 function endprog() {
-    console.log("program End");
-    // child.kill('SIGINT') ;
-    con.end();
-    // process.exit();
+  console.log("program End");
+  // child.kill('SIGINT') ;
+  con.end();
+  // process.exit();
 }
 
-process.on('SIGINT', process.exit );
-process.on('SIGTERM', endprog );
-process.on('uncaughtException', (err) => { console.log('uncaughtException:', err) ; process.exit } ) ;
+process.on('SIGINT', process.exit);
+process.on('SIGTERM', endprog);
+process.on('uncaughtException', (err) => { console.log('uncaughtException:', err); process.exit });
 process.on('exit', endprog);
 // hid.close() ;

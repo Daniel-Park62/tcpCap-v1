@@ -1,3 +1,5 @@
+gist a4268716b04414e44a9917d661dbd23996789ced
+
 groupadd mysql
 useradd -g mysql mysql
 cd /usr/local

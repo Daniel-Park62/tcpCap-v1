@@ -8,12 +8,13 @@ module.exports = {
       user: config.user,
       password: config.password,
       database: config.database
-    });
+    }) ;
+
     con.connect(err => {
       if (err) {
         console.log("not connected due to error: " , err);
       } else {
-        console.log("connected ! connection : " , config.host);
+        console.log("connected! " , config.host);
       }
     });
     return con ;

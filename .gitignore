@@ -1,5 +1,5 @@
-/node_module/
-/log/
+node_modules/
+log
 *.bak
 *.log
 *.*~

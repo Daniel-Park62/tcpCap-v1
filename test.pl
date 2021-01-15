@@ -1,5 +1,15 @@
 #!/usr/bin/perl
 
+
+#!/usr/bin/perl -w
+use strict;
+use Config;
+
+# check perl threads
+$Config{usethreads} or die "Recomplie Perl with threads to run this program.";
+
+__END__
+
 # AQT TCPDUMP
 
 use strict;
