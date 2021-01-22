@@ -73,8 +73,8 @@ function dataHandle(stream ) {
 
       let data ;
       data = stream.read(szn)  ;
-      console.log(data.toString()) ;
       continue;
+      console.log(data.toString()) ;
       let srcip = data.slice(0,30).toString() ;
       let srcport = data.readUInt16BE(30) ;
       let dstip = data.slice(32,62).toString() ;
