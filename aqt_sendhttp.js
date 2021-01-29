@@ -1,5 +1,6 @@
 "use strict";
 
+const MAX_RESP_LEN = 8192;
 const v_tcode = process.argv[2] ;
 if (undefined == v_tcode ) {
   console.info("테스트ID를 지정하세요.") ;
@@ -51,8 +52,8 @@ function dataSend( rdata, qstream ) {
     const rsz = rDatas.length ;
     console.log(stime.toSqlfmt(), rtime.toSqlfmt(), svctime, 'id=',rdata.pkey, 'rcv len=', rsz );
     // let new_d = Buffer.from(resdata,'binary') ;
-    con2.query("UPDATE ttcppacket SET rdata = ?, stime = ?, rtime = ?, svctime = ?, elapsed = ?, rcode = ? , rlen = ? where pkey = ? "
-              , [rDatas ,stime.toSqlfmt(), rtime.toSqlfmt(), svctime, svctime, rdata.rcode , rsz, rdata.pkey]
+    con2.query("UPDATE ttcppacket SET rdata = ?, stime = ?, rtime = ?,  elapsed = ?, rcode = ? , rlen = ? where pkey = ? "
+              , [rDatas ,stime.toSqlfmt(), rtime.toSqlfmt(), svctime, rdata.rcode , rsz, rdata.pkey]
               , (err, result) => {
                   if (err) {
                     console.error('update error:',err);
@@ -86,11 +87,11 @@ function dataHandle( rdata, qstream ) {
   // console.log(shead2) ;
   shead2.forEach(v => {
     const kv = v.split(':') ;
-    if (/(Content-Type|Referer|upgrade-Insecure-Requests|Accept)/.test(kv[0])) {
+    if (/(Content-Type|Referer|upgrade-Insecure-Requests|Accept|Cookie)/.test(kv[0])) {
       options.headers[kv[0]] = kv.slice(1).join(':') ;
     }
   });
-  console.log(JSON.stringify(options)) ;
+  // console.log(JSON.stringify(options)) ;
   const req = http.request(options, function (res) {
     let stime ; // = moment() ;
     // console.log('STATUS: ' + res.statusCode);
@@ -99,9 +100,9 @@ function dataHandle( rdata, qstream ) {
     for (const [key, value] of Object.entries(res.headers)) {
       resHs += `${key}: ${value}\r\n`;
     };
-    resHs += "\r\n";
+
     // res.setEncoding('utf8');
-    let recvData = [Buffer.from(resHs)] ; 
+    let recvData = [] ; 
     res.once('readable', () => {
       stime = moment() ;
     }) ;
@@ -119,14 +120,14 @@ function dataHandle( rdata, qstream ) {
       let rDatas = Buffer.concat(recvData) ;
       console.log( stime.toSqlfmt(), rtime.toSqlfmt(), svctime, 'id=',rdata.pkey, 'rcv len=', rsz );
       // let new_d = Buffer.from(resdata,'binary') ;
-      con2.query("UPDATE ttcppacket SET rdata = ?, stime = ?, rtime = ?, svctime = ?, elapsed = ?, rcode = ? , rlen = ? ,cdate = now() where pkey = ?"
-                , [rDatas,stime.toSqlfmt(), rtime.toSqlfmt(), svctime, svctime, res.statusCode , rsz, rdata.pkey]
+      con2.query("UPDATE ttcppacket SET \
+                 rdata = ?, stime = ?, rtime = ?,  elapsed = ?, rcode = ? ,rhead = ?, rlen = ? ,cdate = now() where pkey = ?"
+                , [rDatas,stime.toSqlfmt(), rtime.toSqlfmt(), svctime, res.statusCode ,resHs,  rsz, rdata.pkey]
                 , (err, result) => {
                     if (err) {
                       console.error('update error:',err);
-                    }
-                    
-                    // else console.log("update ok:", result) ;
+                    } else 
+                      console.log("** update ok:", result) ;
                   }
       );
       qstream.resume() ;
@@ -143,10 +144,9 @@ function dataHandle( rdata, qstream ) {
   req.end();
 }
 
-
 console.log("start...",v_tcode ) ;
 
-const qstream =  con.queryStream("SELECT pkey,dstip,dstport,uri,method,sdata, rlen FROM ttcppacket where tcode = ? ", [v_tcode]) ;
+const qstream =  con.queryStream("SELECT pkey,dstip,dstport,uri,method,sdata, rlen FROM ttcppacket where tcode = ? order by o_stime", [v_tcode]) ;
 qstream.on("error", err => {
       console.log(err); //if error
     });
@@ -162,10 +162,16 @@ qstream.on("error", err => {
     qstream.on("end", () => {
       con.end();
       console.log("read ended");
-      endprog ; 
-      process.exit ;
+
     }) ;
 
+// setInterval(() => {
+//   console.log('check', endflag);
+//   if (endflag) {
+//     endprog ;
+//     process.exit() ;
+//   }
+// }, 5 * 1000);
 
 function endprog() {
     console.log("program End");

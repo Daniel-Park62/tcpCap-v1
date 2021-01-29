@@ -2,11 +2,17 @@
 
 const MAX_RESP_LEN = 8192;
 const dstv = process.argv[2];
+const CN_TCODE = process.argv[3];
 if (undefined == dstv) {
     console.info("대상 파일(또는 host)을 지정하세요.");
     process.exit(1);
 }
-console.info( process.argv[2] );
+if (undefined == CN_TCODE) {
+    console.info("저장될 테스트ID를 지정하세요.");
+    console.info("aqtCapTodb 호스트(파일) 테스트id");
+    process.exit(1);
+}
+console.info( process.argv[2], CN_TCODE );
 const mysql_dbc = require('./db/db_con');
 const con = mysql_dbc.init();
 const { spawn } = require('child_process');
@@ -64,7 +70,7 @@ parser.on('packet', function (packet) {
                 let mdata = /^(GET|POST|DELETE|PUT)\s+(\S+)\s/s.exec(sdata.toString());
                 ky = util.format('%s:%d:%d', dstip, ret.info.dstport, ret.info.seqno + datalen) ;
                 let datas = {
-                    tcode: 'TH02',
+                    tcode: CN_TCODE,
                     method: mdata[1],
                     uri: mdata[2],
                     o_stime: ptime,
@@ -77,6 +83,7 @@ parser.on('packet', function (packet) {
                     dstport: ret.info.dstport,
                     seqno: ret.info.seqno,
                     ackno: ret.info.ackno,
+                    rhead:'',
                 };
                 myMap.set(ky, datas) ;
             } else if(myMap.has(ky)) {
@@ -85,19 +92,22 @@ parser.on('packet', function (packet) {
                 datas.rtime = ptime ;
                 let pi = buffer.indexOf("\r\n\r\n");
                 if  (pi == -1) {
-                    pi = ret.offset + 512 ;
+                    pi = ret.offset  ;
                 };
                 let res = buffer.slice(ret.offset, pi).toString() 
-                // if (res.match(/Content-Type:\s*image/)) {
-                //     myMap.delete(ky) ;
-                //     // console.log(res) ;
-                //     return ;
-                // };
+                if (res.match(/Content-Type:\s*image/)) {
+                    myMap.delete(ky) ;
+                    // console.log(res) ;
+                    return ;
+                };
+                if ( /^HTTP\/.+/s.test(res)) datas.rhead = res ;
+                
                 let rcode = /^HTTP.+?\s(\d+?)\s(?:.*Content-Length:\s?(\d+))?\s/s.exec(res) ;
                 if ( rcode ) {
                     datas.rcode = Number(rcode[1]) ;
                     datas.rlen = Number(rcode[2]) || datalen ;
-                    datas.rdata = buffer.slice(ret.offset, ret.offset + datalen);
+                    datas.rdata = buffer.slice(pi);
+                    // datas.rdata = buffer.slice(ret.offset, ret.offset + datalen);
                     // console.log(datas );
                     // console.log(datas.rdata.toString() );
                 } else {
@@ -106,13 +116,14 @@ parser.on('packet', function (packet) {
                     else
                         datas.rdata = buffer.slice(ret.offset, ret.offset + datalen);
                 };
-                // ('TH02', ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?) ;",
-                if (datas.rlen > 0 && ( datas.rdata.length >= datas.rlen || datas.rdata.length >= MAX_RESP_LEN )) {
+                
+                if (datas.rlen > 0 && ( datas.rdata.length >= (  MAX_RESP_LEN >= datas.rlen ? MAX_RESP_LEN : datas.rlen)) ) {
                     con.query("INSERT INTO TTCPPACKET \
-                            (TCODE,O_STIME,STIME,RTIME, SRCIP,SRCPORT,DSTIP,DSTPORT,PROTO, METHOD,URI,SEQNO,ACKNO,RCODE,slen,rlen,SDATA,RDATA) values \
-                            ('TH02', ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?) ;",
-                            [datas.o_stime, datas.stime ,datas.rtime,datas.srcip,datas.srcport,datas.dstip,datas.dstport, 6, 
-                                datas.method,datas.uri,datas.seqno,datas.ackno,datas.rcode, datas.slen,datas.rlen,datas.sdata,datas.rdata],
+                            (TCODE, O_STIME,STIME,RTIME, SRCIP,SRCPORT,DSTIP,DSTPORT,PROTO, METHOD,URI,SEQNO,ACKNO,RCODE,RHEAD,slen,rlen,SDATA,RDATA) \
+                            values \
+                            (?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?) ;",
+                            [CN_TCODE, datas.o_stime, datas.stime ,datas.rtime,datas.srcip,datas.srcport,datas.dstip,datas.dstport, 1, 
+                                datas.method,datas.uri,datas.seqno,datas.ackno,datas.rcode, datas.rhead, datas.slen,datas.rlen,datas.sdata,datas.rdata],
                         (err, dt) => {
                         if (err) 
                             console.error(err);
@@ -247,9 +258,23 @@ child.stdout.on('readable', () => dataHandle(child.stdout));
 */
 
 function endprog() {
-    console.log("program End");
+
+    con.query("UPDATE TTCPPACKET SET CMPID = PKEY WHERE TCODE = ? and CMPID = 0 ",   [CN_TCODE],
+        (err, dt) => {
+            if (err)
+                console.error(err);
+            else
+                console.log("## UPDATE ok ", datas.uri);
+
+            con.end();
+
+        }
+    );
+    
+    console.log("*** program End ***");
+
     // child.kill('SIGINT') ;
-    con.end();
+    
     // process.exit();
 }
 process.on('SIGINT', process.exit);
