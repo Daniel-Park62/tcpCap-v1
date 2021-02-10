@@ -1,11 +1,6 @@
 "use strict";
 
 const MAX_RESP_LEN = 1024 * 32;
-const v_tcode = process.argv[2] ;
-if (undefined == v_tcode ) {
-  console.info("테스트ID를 지정하세요.") ;
-  process.exit(1) ;
-}
 
 const moment = require('moment');
 const mrdb = require('./db/db_con');
@@ -16,62 +11,11 @@ moment.prototype.toSqlfmt = function () {
 };
 
 const con = mrdb.init() ;
-const con2 = mrdb.init() ;
-const net = require("net");
-const client = new net.Socket();
-
-function dataSend( rdata, qstream ) {
-  let resdata = '' ; // JSON.stringify(res.headers) + "\n";
-  let stime ; // = moment() ;
-  let rtime ; // = moment() ;
-  let recvData = [] ;
-  client.connect(
-    {port:rdata.dstport,
-     host:rdata.dstip
-    },
-    function() {
-      console.log("Connected");
-      stime = moment() ;
-      client.write(rdata.sdata);
-    }
-  );
-  client.on("data", function(data) {
-    recvData.push(data)     ;
-    client.end() ;
-  });
-  
-  client.on("close", function() {
-    console.log("Connection closed");
-    
-  });
-  client.on('end', () =>  {
-    rtime = moment();
-    if (recvData.length < 1) return ;
-    const svctime = moment.duration(rtime.diff(stime)) / 1000.0 ;
-    let rDatas = Buffer.concat(recvData) ;
-    const rsz = rDatas.length ;
-    console.log(stime.toSqlfmt(), rtime.toSqlfmt(), svctime, 'id=',rdata.pkey, 'rcv len=', rsz );
-    // let new_d = Buffer.from(resdata,'binary') ;
-    con2.query("UPDATE ttcppacket SET rdata = ?, stime = ?, rtime = ?,  elapsed = ?, rcode = ? , rlen = ? where pkey = ? "
-              , [rDatas ,stime.toSqlfmt(), rtime.toSqlfmt(), svctime, rdata.rcode , rsz, rdata.pkey]
-              , (err, result) => {
-                  if (err) {
-                    console.error('update error:',err);
-                  };
-                  
-                  // else console.log("update ok:", result) ;
-                }
-    );
-    qstream.resume()  
-  }) ;
-  client.on('error', function(err) {
-    console.log('Socket Error: ', JSON.stringify(err));
-  });
-  
-}
+// const net = require("net");
+// const client = new net.Socket();
 
 function dataHandle( rdata, qstream ) {
-
+    
   let uri = /^(GET|POST|DELETE|PUT)\s+(\S+)\s/s.exec(rdata.sdata.toString())[2];
   const options = { 
     hostname: rdata.dstip , 
@@ -123,7 +67,7 @@ function dataHandle( rdata, qstream ) {
       
       // console.log( stime.toSqlfmt(), rtime.toSqlfmt(), svctime, 'id=',rdata.pkey, 'rcv len=', rsz );
       // let new_d = Buffer.from(resdata,'binary') ;
-      con2.query("UPDATE ttcppacket SET \
+      con.query("UPDATE ttcppacket SET \
                  rdata = ?, stime = ?, rtime = ?,  elapsed = ?, rcode = ? ,rhead = ?, rlen = ? ,cdate = now() where pkey = ? " 
                 , [rDatas,stime.toSqlfmt(), rtime.toSqlfmt(), svctime, res.statusCode ,resHs,  rsz, rdata.pkey]
                 , (err, result) => {
@@ -149,7 +93,7 @@ function dataHandle( rdata, qstream ) {
     const rtime = moment();
     const svctime = moment.duration(rtime.diff(stime)) / 1000.0 ;
 
-    con2.query("UPDATE ttcppacket SET \
+    con.query("UPDATE ttcppacket SET \
                   stime = ?, rtime = ?,  elapsed = ?, rcode = ? ,cdate = now() where pkey = ?"
                 , [stime.toSqlfmt(), rtime.toSqlfmt(), svctime, 999, rdata.pkey]
                 , (err, result) => {
@@ -165,27 +109,35 @@ function dataHandle( rdata, qstream ) {
   req.end();
 }
 
-console.log("start...",v_tcode ) ;
+console.log("* start Resend check" ) ;
 
-const qstream =  con.queryStream("SELECT pkey,dstip,dstport,uri,method,sdata, rlen FROM ttcppacket where tcode = ? " 
-                    + ( process.argv[3] ? " and " + process.argv[3] : "") + " order by o_stime  ", [v_tcode]) ;
-qstream.on("error", err => {
-      console.log(err); //if error
+setInterval(() => {
+
+    const qstream = con.queryStream("SELECT pkey FROM trequest order by reqDt  " );
+    qstream.on("error", err => {
+        console.log(err); //if error
     });
     qstream.on("fields", meta => {
-      // console.log(meta); // [ ...]
+        // console.log(meta); // [ ...]
     });
     qstream.on("data", row => {
-      qstream.pause() ;
-      //  dataSend(row, qstream);
-       dataHandle(row,qstream);
-      
+        qstream.pause();
+        con.query("SELECT pkey,dstip,dstport,uri,method,sdata, rlen FROM ttcppacket where pkey = ? ", [row.pkey]
+            , (err, row2) => {
+                if (err) {
+                    console.error("select error :", err);
+                    qstream.resume();
+                } else {
+                    dataHandle(row2[0], qstream);
+                    con.query("DELETE FROM trequest where pkey = ?", [row.pkey]) ;
+                }
+            }
+        );
     });
     qstream.on("end", () => {
-      con.end();
-      console.log("read ended");
-      setTimeout( process.exit , 5000 ) ;
-    }) ;
+        console.log("read ended");
+    });
+}, 5 * 1000);
 
 // setInterval(() => {
 //   console.log('check', endflag);
@@ -207,7 +159,7 @@ function bufTrim(buf) {
 function endprog() {
     console.log("program End");
     // child.kill('SIGINT') ;
-    con2.end() ;
+    con.end() ;
 }
 
 process.on('SIGINT', process.exit );
