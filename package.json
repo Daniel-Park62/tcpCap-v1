@@ -1,13 +1,17 @@
 {
   "name": "newv",
   "version": "1.0.0",
-  "description": "aqt tool",
-  "main": "aqtrcvDb.js",
+  "description": "aqt tool 2",
+  "main": "aqtCapToDb.js",
   "directories": {
     "lib": "lib"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build1": "pkg  --targets node10-win-x64 -o aqtCapToDb.exe aqt_ToDb.js",
+    "build2": "pkg  --targets node10-win-x64 -o aqtSendHttp.exe aqt_sendhttp.js",
+    "build3": "pkg  --targets node10-win-x64 -o aqtresend.exe aqt_resend.js",
+    "build4": "pkg  --targets node10-win-x64 -o aqtExecJob.exe aqt_execjob.js"
   },
   "author": "",
   "license": "ISC",
