@@ -1,6 +1,7 @@
 "use strict";
 
-const MAX_RESP_LEN = 1024 * 32;
+const {  Worker,  isMainThread, workerData } = require('worker_threads');
+
 const PGNM = '[aqtExecJob]';
 
 const moment = require('moment');
@@ -29,13 +30,15 @@ setInterval( () => {
               } 
               if (rows.length == 0)  return ;
               try {
-                con.query("UPDATE texecjob set resultstat = 1, startDt = now() where pkey = ?",[rows[0].pkey]) ;
+                con.query("UPDATE texecjob set resultstat = 1, startDt = now(), endDt = null where pkey = ?",[rows[0].pkey]) ;
               } catch(err){
                 console.error(err) ;
               }
             
               if (rows[0].jobkind == 1)
                 importData(rows[0]);
+              else if (rows[0].tnum > 1)
+                sendWorker(rows[0]);
               else
                 sendData(rows[0]);
           
@@ -52,10 +55,68 @@ function importData(row){
 }
 
 function sendData(row){
-  const sendhttp = require('./lib/sendHttp') ;
-  let qstr = "UPDATE texecjob set resultstat = 2, msg = ?, endDt = now() where pkey = " + row.pkey ;
-  sendhttp(row.tcode,  row.etc , con , (msg) => { con.query(qstr,[msg]) }  ) ;
+  con.query("SELECT lvl FROM TMASTER WHERE CODE = ?",[row.tcode],
+  (err,dat) => {
+    if (err) {
+      console.log(PGNM,err) ;
+      con.query("UPDATE texecjob set resultstat = 3, msg = ?, endDt = now() where pkey = ?", [err, row.pkey]) ;
+      return ;
+    } else if (dat[0].lvl == '0') {
+      console.log(PGNM,"Origin ID 는 재전송 불가합니다.") ;
+      con.query("UPDATE texecjob set resultstat = 3, msg = 'Origin ID 는 재전송 불가합니다.', endDt = now() where pkey = ?", [row.pkey]) ;
+      return ;
+    }
+    const sendhttp = require('./lib/sendHttp') ;
+    let qstr = "UPDATE texecjob set resultstat = 2, msg = ?, endDt = now() where pkey = " + row.pkey ;
+    sendhttp(row.tcode,  row.etc , '', con , (msg) => { con.query(qstr,[msg]) }  ) ;
+  }) ;
   
+}
+
+function sendWorker(row){
+  let condi = row.etc > ' ' ? "and ("+ row.etc +")" : "" ;
+  const qstr = "SELECT COUNT(*) cnt FROM ttcppacket where tcode = ? " + condi  ;
+  const threads = new Set();
+  let tcnt = 0, pcnt = 0 ;
+  con.query( qstr , [row.tcode] ,
+    (err,d) => {
+      if (!err) {
+        tcnt = d[0].cnt ;
+        pcnt = Math.ceil( tcnt / row.tnum ) ;
+        
+      } else 
+        console.log(PGNM,err) ;
+    }
+  );
+  
+  setTimeout(  () => {
+    console.log(PGNM, tcnt, pcnt);
+    let msgs = '';
+    for (let i = 0 ;  i < tcnt ;  i += pcnt ){
+      let i2 = pcnt ;
+      if ( tcnt < i+pcnt) i2 = ( tcnt - i ) ;
+
+      const wdata = { workerData: {tcode:row.tcode, cond: row.etc, limit: `${i},${i2}`  } };
+      // const wdata =  [row.tcode, row.etc,  `${i},${pcnt}`  ];
+      console.log(PGNM, wdata) ;
+      msgs  += wdata.workerData.limit," : ";
+      const wkthread = new Worker(__dirname + '/aqt_sendWorker.js' ,  wdata ) 
+      .on('exit', () => {
+        threads.delete(wkthread);
+       
+        console.log(PGNM,`Thread exiting, ${threads.size} running...`);
+        if (threads.size == 0) {
+          console.log(PGNM, 'thread all ended !!')
+          const qstr = "UPDATE texecjob set resultstat = 2, msg = ?, endDt = now() where pkey = " + row.pkey ;
+          con.query(qstr,[msgs]) ;
+        }
+      });
+      threads.add(wkthread);
+      // wkthread.postMessage(wdata) ;
+
+    }
+  },1000) ;
+
 }
 
 function endprog() {
