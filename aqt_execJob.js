@@ -21,7 +21,7 @@ console.log(PGNM,"* start Execute Job" ) ;
 
 setInterval( () => {
 
-  con.query("select pkey, jobkind, tcode, tnum,dbskip, exectype,etc,`infile` from texecjob \
+  con.query("select pkey, jobkind, tcode, tnum,dbskip, exectype,etc,in_file from texecjob \
                 WHERE reqstartdt <= NOW() and resultstat=0 and jobkind in (1,9) order by reqstartdt LIMIT 1" ,
             (err,rows) => {
               if (err) {
@@ -51,7 +51,7 @@ setInterval( () => {
 function importData(row){
   const cdb = require('./lib/capToDb') ;
   let qstr = "UPDATE texecjob set resultstat = 2, msg = ?, endDt = now() where pkey = " + row.pkey ;
-  cdb(row.tcode, row.infile, con, (msg) => { con.query(qstr,[msg]) }  ) ;
+  cdb(row.tcode, row.in_file, con, (msg) => { con.query(qstr,[msg]) }  ) ;
 }
 
 function sendData(row){
