@@ -1,7 +1,7 @@
 "use strict";
-
+const PGNM = '[Resend]';
 const MAX_RESP_LEN = 1024 * 32;
-
+const Dsec = /^\d+$/.test(process.argv[2])  ? process.argv[2] * 1 : 5 ;
 const moment = require('moment');
 const mrdb = require('./db/db_con');
 
@@ -15,15 +15,15 @@ const con = mrdb.init() ;
 // const client = new net.Socket();
 
 function dataHandle( rdata, qstream ) {
-    
-  let uri = /^(GET|POST|DELETE|PUT)\s+(\S+)\s/s.exec(rdata.sdata.toString())[2];
+  let stime  = moment() ;  
+  let uri = /^(GET|POST|DELETE|PUT|PATCH)\s+(\S+)\s/s.exec(rdata.sdata.toString())[2];
   const options = { 
     hostname: rdata.dstip , 
     port: rdata.dstport , 
     path: uri , 
     method: rdata.method ,
     headers: {
-      connection: "keep-alive",
+      // connection: "keep-alive",
     },
   };
   const pi = rdata.sdata.indexOf("\r\n\r\n");
@@ -32,18 +32,23 @@ function dataHandle( rdata, qstream ) {
   // console.log(shead2) ;
   shead2.forEach(v => {
     const kv = v.split(':') ;
-    if (/(Content-Type|Referer|upgrade-Insecure-Requests|Accept|Cookie)/.test(kv[0])) {
-      options.headers[kv[0]] = kv.slice(1).join(':') ;
+    // if (/(Content-Type|Referer|upgrade-Insecure-Requests|Accept|Cookie)/.test(kv[0])) {
+    if (! /^(GET|POST|DELETE|PUT|PATCH|Host|Content-Length)/.test(kv[0])) {
+        options.headers[kv[0]] = kv.slice(1).join(':').trim() ;
     }
   });
   // console.log(JSON.stringify(options)) ;
   const req = http.request(options, function (res) {
-    let stime  = moment() ;
+    stime  = moment() ;
     // console.log('STATUS: ' + res.statusCode);
     // console.log('HEADERS: ' + JSON.stringify(res.headers));
     let resHs = 'HTTP/' + res.httpVersion + ' ' + res.statusCode + ' ' + res.statusMessage + "\r\n" ;
     for (const [key, value] of Object.entries(res.headers)) {
       resHs += `${key}: ${value}\r\n`;
+      if (/set-cookie/i.test(key)) {
+        saveCookie( rdata, `${value}` ) ;
+      }
+
     };
 
     // res.setEncoding('utf8');
@@ -81,21 +86,19 @@ function dataHandle( rdata, qstream ) {
       
     });
   });
-  if (rdata.method === 'POST') {
-    if (pi > 0) {
+  if ( pi > 0 && /POST|PUT|DELETE|PATCH/.test(rdata.method)  ) {
       const sdata = rdata.sdata.slice(pi) ;
       // console.log(sdata.toString()) ;
       req.write(sdata) ;
-    }
   }
   req.on('error', function (e) { 
-    console.log('Problem with request: ', e, options ); 
+    console.log(PGNM,'Problem with request: ', e.message, e.errno);
     const rtime = moment();
     const svctime = moment.duration(rtime.diff(stime)) / 1000.0 ;
 
     con.query("UPDATE ttcppacket SET \
-                  stime = ?, rtime = ?,  elapsed = ?, rcode = ? ,cdate = now() where pkey = ?"
-                , [stime.toSqlfmt(), rtime.toSqlfmt(), svctime, 999, rdata.pkey]
+                  stime = ?, rtime = ?,  elapsed = ?, rcode = ?,  rhead = ? ,cdate = now() where pkey = ?"
+                , [stime.toSqlfmt(), rtime.toSqlfmt(), svctime, 999, e.message, rdata.pkey]
                 , (err, result) => {
                     if (err) 
                       console.error('update error:',err);
@@ -109,35 +112,39 @@ function dataHandle( rdata, qstream ) {
   req.end();
 }
 
-console.log("* start Resend check" ) ;
+console.log("%s * start Resend check (%d 초 단위)", PGNM,  Dsec) ;
 
 setInterval(() => {
 
     const qstream = con.queryStream("SELECT pkey FROM trequest order by reqDt  " );
     qstream.on("error", err => {
-        console.log(err); //if error
+        console.log(PGNM,err); //if error
     });
     qstream.on("fields", meta => {
         // console.log(meta); // [ ...]
     });
     qstream.on("data", row => {
         qstream.pause();
-        con.query("SELECT pkey,dstip,dstport,uri,method,sdata, rlen FROM ttcppacket where pkey = ? ", [row.pkey]
+        
+        con.query("SELECT t.pkey,o_stime, if( ifnull(m.thost2,IFNULL(c.thost,''))>'',ifnull(m.thost2,c.thost) ,dstip) dstip, if(ifnull(m.tport2,IFNULL(c.tport,0))>0, ifnull(m.tport2,c.tport), dstport) dstport,uri,method,sdata, rlen " + 
+          "FROM ttcppacket t join tmaster c on (t.tcode = c.code ) left join thostmap m on (t.tcode = m.tcode and t.dstip = m.thost and t.dstport = m.tport) " +
+          "where t.pkey = ? ", [row.pkey]
             , (err, row2) => {
                 if (err) {
-                    console.error("select error :", err);
+                    console.error(PGNM,"select error :", err);
                     qstream.resume();
                 } else {
+                    console.log("%s ID (%d) Re-send", PGNM, row.pkey);
                     dataHandle(row2[0], qstream);
                     con.query("DELETE FROM trequest where pkey = ?", [row.pkey]) ;
                 }
             }
         );
     });
-    qstream.on("end", () => {
-        console.log("read ended");
-    });
-}, 5 * 1000);
+    // qstream.on("end", () => {
+    //     console.log(PGNM,"read ended");
+    // });
+}, Dsec * 1000);
 
 // setInterval(() => {
 //   console.log('check', endflag);
@@ -157,9 +164,38 @@ function bufTrim(buf) {
 }
 
 function endprog() {
-    console.log("program End");
+    console.log(PGNM,"program End");
     // child.kill('SIGINT') ;
     con.end() ;
+}
+
+const ckMap = new Map();  // cookie 저장
+const parseCookies = ( cookie = '' ) => {
+  console.log("cookie : ",cookie);
+  return cookie
+      .split(';')
+      .map( v => v.split('=') )
+      .map( ([k, ...vs]) => [k, vs.join('=')] )
+      .reduce( (acc, [k,v]) => {
+          acc[k.trim()] = decodeURIComponent(v);
+          return acc;
+      }, {});
+}
+
+function saveCookie(rdata, cook) {
+  const ckData = parseCookies( cook ) ;
+  const path = ckData.Path || '/' ;
+  let sv_ckData = ckMap.get(rdata.dstip+rdata.dstport) || {} ;
+  let xdata = sv_ckData[path] || {} ;
+  for (const k in ckData) {
+    if (/Path|HttpOnly|Secure/.test(k))  continue ;
+    xdata[k] = ckData[k] ;
+  }
+
+  sv_ckData[path] = xdata ;
+  ckMap.set(rdata.dstip+rdata.dstport, sv_ckData) ;
+  console.log(sv_ckData) ;
+
 }
 
 process.on('SIGINT', process.exit );

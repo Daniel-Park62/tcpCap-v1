@@ -17,6 +17,7 @@
   "license": "ISC",
   "dependencies": {
     "cap": "^0.2.1",
-    "mariadb": "^2.5.2"
+    "mariadb": "^2.5.3",
+    "moment": "^2.29.1"
   }
 }

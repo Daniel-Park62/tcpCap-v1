@@ -10,7 +10,6 @@ if (undefined == v_tcode ) {
 const mrdbc = require('./db/db_con');
 const con = mrdbc.init();
 
-
 const moment = require('moment');
 const http = require('http');
 moment.prototype.toSqlfmt = function () {

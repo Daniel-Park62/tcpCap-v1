@@ -75,7 +75,7 @@ function sendData(row){
 
 function sendWorker(row){
   let condi = row.etc > ' ' ? "and ("+ row.etc +")" : "" ;
-  const qstr = "SELECT COUNT(*) cnt FROM ttcppacket where tcode = ? " + condi  ;
+  const qstr = "SELECT COUNT(*) cnt FROM ttcppacket t where tcode = ? " + condi  ;
   const threads = new Set();
   let tcnt = 0, pcnt = 0 ;
   con.query( qstr , [row.tcode] ,
