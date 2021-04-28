@@ -45,3 +45,10 @@ Please report any problems at http://mariadb.org/jira
 
 chown mysql:mysql -R /usr/local/mariadb
 chmod 755 /usr/local/mariadb -R
+
+
+==== port 확인법
+telnet ip port
+nc -vz ip port <- linux
+Test-NetConnection 8.8.8.8 -p 443 <- power Shell
+=====

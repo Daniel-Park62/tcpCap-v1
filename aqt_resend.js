@@ -14,14 +14,17 @@ const con = mrdb.init() ;
 // const net = require("net");
 // const client = new net.Socket();
 
-function dataHandle( rdata, qstream ) {
+async function dataHandle( rdata, qstream ) {
   let stime  = moment() ;  
   let uri = /^(GET|POST|DELETE|PUT|PATCH)\s+(\S+)\s/s.exec(rdata.sdata.toString())[2];
+  if ( uri.indexOf('%') == -1) uri = encodeURI(uri) ;
+
   const options = { 
     hostname: rdata.dstip , 
     port: rdata.dstport , 
     path: uri , 
     method: rdata.method ,
+    timeout: 5000,
     headers: {
       // connection: "keep-alive",
     },
@@ -33,7 +36,7 @@ function dataHandle( rdata, qstream ) {
   shead2.forEach(v => {
     const kv = v.split(':') ;
     // if (/(Content-Type|Referer|upgrade-Insecure-Requests|Accept|Cookie)/.test(kv[0])) {
-    if (! /^(GET|POST|DELETE|PUT|PATCH|Host|Content-Length)/.test(kv[0])) {
+    if (! /^(GET|POST|DELETE|PUT|PATCH|Host)/.test(kv[0])) {
         options.headers[kv[0]] = kv.slice(1).join(':').trim() ;
     }
   });
@@ -129,13 +132,13 @@ setInterval(() => {
         con.query("SELECT t.pkey,o_stime, if( ifnull(m.thost2,IFNULL(c.thost,''))>'',ifnull(m.thost2,c.thost) ,dstip) dstip, if(ifnull(m.tport2,IFNULL(c.tport,0))>0, ifnull(m.tport2,c.tport), dstport) dstport,uri,method,sdata, rlen " + 
           "FROM ttcppacket t join tmaster c on (t.tcode = c.code ) left join thostmap m on (t.tcode = m.tcode and t.dstip = m.thost and t.dstport = m.tport) " +
           "where t.pkey = ? ", [row.pkey]
-            , (err, row2) => {
+            , async (err, row2) => {
                 if (err) {
                     console.error(PGNM,"select error :", err);
                     qstream.resume();
                 } else {
                     console.log("%s ID (%d) Re-send", PGNM, row.pkey);
-                    dataHandle(row2[0], qstream);
+                    await dataHandle(row2[0], qstream);
                     con.query("DELETE FROM trequest where pkey = ?", [row.pkey]) ;
                 }
             }
@@ -156,6 +159,7 @@ setInterval(() => {
 
 function bufTrim(buf) {
   // let pi = buf.length > 100 ? 100 : buf.length;
+  if (buf == undefined) return Buffer.from('');
   let str = buf.toString();
   str = str.replace(/^\s+/, '');
   // str = str.replace(/^[0-9a-fA-F]+\s*\r\n\r\n\s*/, '');
@@ -171,13 +175,13 @@ function endprog() {
 
 const ckMap = new Map();  // cookie 저장
 const parseCookies = ( cookie = '' ) => {
-  console.log("cookie : ",cookie);
+  // console.log("cookie : ",cookie);
   return cookie
       .split(';')
       .map( v => v.split('=') )
       .map( ([k, ...vs]) => [k, vs.join('=')] )
       .reduce( (acc, [k,v]) => {
-          acc[k.trim()] = decodeURIComponent(v);
+          acc[k.trim()] = v ; // decodeURIComponent(v);
           return acc;
       }, {});
 }
@@ -194,7 +198,7 @@ function saveCookie(rdata, cook) {
 
   sv_ckData[path] = xdata ;
   ckMap.set(rdata.dstip+rdata.dstport, sv_ckData) ;
-  console.log(sv_ckData) ;
+  // console.log(sv_ckData) ;
 
 }
 

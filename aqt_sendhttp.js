@@ -21,7 +21,7 @@ console.log("## Start send Data : ", v_tcode );
 const sendhttp = require('./lib/sendHttp') ;
 
 sendhttp(v_tcode,  (process.argv[3] ?  process.argv[3] : "" ),(process.argv[4] ?  process.argv[4] : "" )
-        , con , () => { con.end() ; process.exit(0) ;}) ;
+        , con , 0, () => { con.end() ; process.exit(0) ;}) ;
 
 function endprog() {
     console.log("## program End");

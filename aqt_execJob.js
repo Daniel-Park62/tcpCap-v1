@@ -8,6 +8,8 @@ const moment = require('moment');
 const mrdb = require('./db/db_con');
 
 const http = require('http');
+const { resolve } = require('path');
+const { rejects } = require('assert');
 moment.prototype.toSqlfmt = function () {
     return this.format('YYYY-MM-DD HH:mm:ss.SSSSSS');
 };
@@ -18,10 +20,11 @@ const con = mrdb.init() ;
 
 
 console.log(PGNM,"* start Execute Job" ) ;
+const jobs_set = new Set() ;
 
 setInterval( () => {
 
-  con.query("select pkey, jobkind, tcode, tnum,dbskip, exectype,etc,in_file from texecjob \
+  con.query("select pkey, jobkind, tcode, tnum,dbskip, exectype,etc,in_file, reqnum from texecjob \
                 WHERE reqstartdt <= NOW() and resultstat=0 and jobkind in (1,9) order by reqstartdt LIMIT 1" ,
             (err,rows) => {
               if (err) {
@@ -31,6 +34,7 @@ setInterval( () => {
               if (rows.length == 0)  return ;
               try {
                 con.query("UPDATE texecjob set resultstat = 1, startDt = now(), endDt = null where pkey = ?",[rows[0].pkey]) ;
+                jobs_set.add(rows[0].pkey) ;
               } catch(err){
                 console.error(err) ;
               }
@@ -52,23 +56,28 @@ function importData(row){
   const cdb = require('./lib/capToDb') ;
   let qstr = "UPDATE texecjob set resultstat = 2, msg = ?, endDt = now() where pkey = " + row.pkey ;
   cdb(row.tcode, row.in_file, con, (msg) => { con.query(qstr,[msg]) }  ) ;
+  if (jobs_set.has(row.pkey)) jobs_set.delete(row.pkey);
 }
 
 function sendData(row){
   con.query("SELECT lvl FROM TMASTER WHERE CODE = ?",[row.tcode],
-  (err,dat) => {
+  async (err,dat) => {
     if (err) {
       console.log(PGNM,err) ;
       con.query("UPDATE texecjob set resultstat = 3, msg = ?, endDt = now() where pkey = ?", [err, row.pkey]) ;
+      if (jobs_set.has(row.pkey)) jobs_set.delete(row.pkey);
       return ;
-    } else if (dat[0].lvl == '0') {
+    }
+    if (dat[0].lvl == '0') {
       console.log(PGNM,"Origin ID 는 재전송 불가합니다.") ;
       con.query("UPDATE texecjob set resultstat = 3, msg = 'Origin ID 는 재전송 불가합니다.', endDt = now() where pkey = ?", [row.pkey]) ;
+      if (jobs_set.has(row.pkey)) jobs_set.delete(row.pkey);
       return ;
     }
     const sendhttp = require('./lib/sendHttp') ;
     let qstr = "UPDATE texecjob set resultstat = 2, msg = ?, endDt = now() where pkey = " + row.pkey ;
-    sendhttp(row.tcode,  row.etc , '', con , (msg) => { con.query(qstr,[msg]) }  ) ;
+    await sendhttp(row.tcode,  row.etc , '', con , row.reqnum, (msg) => { con.query(qstr,[msg]);  }  ) ;
+    if (jobs_set.has(row.pkey)) jobs_set.delete(row.pkey);
   }) ;
   
 }
@@ -121,11 +130,23 @@ function sendWorker(row){
 
 function endprog() {
     console.log(PGNM,"## Exec job program End");
-    // child.kill('SIGINT') ;
+    for (pky in jobs_set) {
+      myquery("UPDATE texecjob set resultstat = 3, msg = '작업중단됨.', endDt = now() where pkey = ?", [pky]) ;
+    }
     con.end() ;
 }
 
-process.on('SIGINT', process.exit );
+function myquery(sql,args) {
+  return new Promise((resolve,rejects) => {
+    con.query(sql,args, (err,rows) => {
+      if (err) return rejects(err) ;
+      resolve(row); 
+    })
+  });
+}
+
+process.on('SIGINT',process.exit ); 
+
 process.on('SIGTERM', endprog );
 process.on('uncaughtException', (err) => { console.log(PGNM,'uncaughtException:', err) ; process.exit } ) ;
 process.on('exit', endprog);
