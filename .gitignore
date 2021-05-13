@@ -1,8 +1,10 @@
 node_modules/
 log
+etcf
 *.bak
 *.log
 *.*~
 *.pcap
 test*
 *.exe
+*.txt

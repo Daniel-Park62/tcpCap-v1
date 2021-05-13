@@ -32,15 +32,20 @@ async function dataHandle( rdata, qstream ) {
   const pi = rdata.sdata.indexOf("\r\n\r\n");
   const shead = (pi > 0) ? rdata.sdata.slice(0,pi).toString() : rdata.sdata.toString() ;
   const shead2 = shead.split('\r\n') ;
+  let new_shead = shead2[0] + '\r\n';
   // console.log(shead2) ;
   shead2.forEach(v => {
     const kv = v.split(':') ;
+    let val = kv.slice(1).join(':').trim() ;
     // if (/(Content-Type|Referer|upgrade-Insecure-Requests|Accept|Cookie)/.test(kv[0])) {
     if (! /^(GET|POST|DELETE|PUT|PATCH|Host)/.test(kv[0])) {
-        options.headers[kv[0]] = kv.slice(1).join(':').trim() ;
+        if (kv[0].length > 0) {
+          options.headers[kv[0]] = val  ;
+          new_shead += kv[0] + ': ' + val + '\r\n';
+        }
     }
   });
-  // console.log(JSON.stringify(options)) ;
+  // console.log(options.headers) ;
   const req = http.request(options, function (res) {
     stime  = moment() ;
     // console.log('STATUS: ' + res.statusCode);
@@ -63,10 +68,10 @@ async function dataHandle( rdata, qstream ) {
       recvData.push(chunk) ;
     });
     res.on('end',  function () {
-      if (recvData.length < 1)  {
-        return ;
-        qstream.resume() ;
-      }
+      // if (recvData.length < 1)  {
+      //   qstream.resume() ;
+      //   return ;
+      // }
       const rtime = moment();
       const svctime = moment.duration(rtime.diff(stime)) / 1000.0 ;
       recvData[0] = bufTrim(recvData[0]) ;
@@ -76,8 +81,8 @@ async function dataHandle( rdata, qstream ) {
       // console.log( stime.toSqlfmt(), rtime.toSqlfmt(), svctime, 'id=',rdata.pkey, 'rcv len=', rsz );
       // let new_d = Buffer.from(resdata,'binary') ;
       con.query("UPDATE ttcppacket SET \
-                 rdata = ?, stime = ?, rtime = ?,  elapsed = ?, rcode = ? ,rhead = ?, rlen = ? ,cdate = now() where pkey = ? " 
-                , [rDatas,stime.toSqlfmt(), rtime.toSqlfmt(), svctime, res.statusCode ,resHs,  rsz, rdata.pkey]
+                 rdata = ?, sdata=?, stime = ?, rtime = ?,  elapsed = ?, rcode = ? ,rhead = ?, rlen = ? ,cdate = now() where pkey = ? " 
+                , [rDatas,Buffer.from(new_shead), stime.toSqlfmt(), rtime.toSqlfmt(), svctime, res.statusCode ,resHs,  rsz, rdata.pkey]
                 , (err, result) => {
                     if (err) 
                       console.error('update error:',rdata.pkey, err);
@@ -93,6 +98,7 @@ async function dataHandle( rdata, qstream ) {
       const sdata = rdata.sdata.slice(pi) ;
       // console.log(sdata.toString()) ;
       req.write(sdata) ;
+      new_shead += '\r\n' + sdata.toString() ;
   }
   req.on('error', function (e) { 
     console.log(PGNM,'Problem with request: ', e.message, e.errno);
@@ -100,8 +106,8 @@ async function dataHandle( rdata, qstream ) {
     const svctime = moment.duration(rtime.diff(stime)) / 1000.0 ;
 
     con.query("UPDATE ttcppacket SET \
-                  stime = ?, rtime = ?,  elapsed = ?, rcode = ?,  rhead = ? ,cdate = now() where pkey = ?"
-                , [stime.toSqlfmt(), rtime.toSqlfmt(), svctime, 999, e.message, rdata.pkey]
+                  sdata = ? , stime = ?, rtime = ?,  elapsed = ?, rcode = ?,  rhead = ? ,cdate = now() where pkey = ?"
+                , [Buffer.from(new_shead),stime.toSqlfmt(), rtime.toSqlfmt(), svctime, 999, e.message, rdata.pkey]
                 , (err, result) => {
                     if (err) 
                       console.error('update error:',err);

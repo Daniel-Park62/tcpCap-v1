@@ -25,8 +25,8 @@ echo "*input -> (${MD}) (${CNT}) ($ENDDT)"
 
 mkdir -p out
 
-tcpdump -n -c${CNT} -w out/aa_${MD}.pcap "tcp && tcp[13] & 8 != 0 && host 192 && port (80)"  &
-tcpdump -n -c${CNT} -w out/bb_${MD}.pcap "tcp && tcp[13] & 8 != 0 && host 192 && port (443)"  &
+tcpdump -n -c${CNT} -w out/aa_${MD}.pcap "tcp && tcp[13] & 24 != 0 && host 192 && port (80)"  &
+tcpdump -n -c${CNT} -w out/bb_${MD}.pcap "tcp && tcp[13] & 24 != 0 && host 192 && port (443)"  &
 
 while [[ `date +"%Y%m%d%k%M"` < $ENDDT ]]
 do
