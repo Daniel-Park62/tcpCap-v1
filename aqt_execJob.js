@@ -20,7 +20,6 @@ const con = mrdb.init() ;
 
 
 console.log(PGNM,"* start Execute Job" ) ;
-const jobs_set = new Set() ;
 
 setInterval( () => {
 
@@ -34,7 +33,6 @@ setInterval( () => {
               if (rows.length == 0)  return ;
               try {
                 con.query("UPDATE texecjob set resultstat = 1, startDt = now(), endDt = null where pkey = ?",[rows[0].pkey]) ;
-                jobs_set.add(rows[0].pkey) ;
               } catch(err){
                 console.error(err) ;
               }
@@ -54,9 +52,8 @@ setInterval( () => {
 
 function importData(row){
   const cdb = require('./lib/capToDb') ;
-  let qstr = "UPDATE texecjob set resultstat = 2, msg = ?, endDt = now() where pkey = " + row.pkey ;
+  let qstr = "UPDATE texecjob set resultstat = 2, msg = concat(ifnull(msg,''), IF(ISNULL(msg),'','\r\n'),? ), endDt = now() where pkey = " + row.pkey ;
   cdb(row.tcode, row.in_file, con, (msg) => { con.query(qstr,[msg]) }  ) ;
-  if (jobs_set.has(row.pkey)) jobs_set.delete(row.pkey);
 }
 
 function sendData(row){
@@ -64,20 +61,20 @@ function sendData(row){
   async (err,dat) => {
     if (err) {
       console.log(PGNM,err) ;
-      con.query("UPDATE texecjob set resultstat = 3, msg = ?, endDt = now() where pkey = ?", [err, row.pkey]) ;
-      if (jobs_set.has(row.pkey)) jobs_set.delete(row.pkey);
+      con.query("UPDATE texecjob set resultstat = 3, msg = concat(ifnull(msg,''), IF(ISNULL(msg),'','\r\n'),? ), endDt = now() where pkey = ?", [err, row.pkey]) ;
       return ;
     }
     if (dat[0].lvl == '0') {
       console.log(PGNM,"Origin ID 는 재전송 불가합니다.") ;
       con.query("UPDATE texecjob set resultstat = 3, msg = 'Origin ID 는 재전송 불가합니다.', endDt = now() where pkey = ?", [row.pkey]) ;
-      if (jobs_set.has(row.pkey)) jobs_set.delete(row.pkey);
       return ;
     }
     const sendhttp = require('./lib/sendHttp') ;
-    let qstr = "UPDATE texecjob set resultstat = 2, msg = ?, endDt = now() where pkey = " + row.pkey ;
-    await sendhttp(row.tcode,  row.etc , '', con , row.reqnum, (msg) => { con.query(qstr,[msg]);  }  ) ;
-    if (jobs_set.has(row.pkey)) jobs_set.delete(row.pkey);
+    console.log(PGNM,"pid=>", process.pid);
+    let qstr = "UPDATE texecjob set resultstat = 2, msg = concat(ifnull(msg,''), IF(ISNULL(msg),'','\r\n'),? ), endDt = now() where pkey = " + row.pkey ;
+    let param = { tcode : row.tcode, cond: row.etc, conn: con, limit:'', interval: row.reqnum, func: (msg)=> con.query(qstr,[msg]) } ;
+    sendhttp(param ) ;
+    
   }) ;
   
 }
@@ -130,9 +127,6 @@ function sendWorker(row){
 
 function endprog() {
     console.log(PGNM,"## Exec job program End");
-    for (pky in jobs_set) {
-      myquery("UPDATE texecjob set resultstat = 3, msg = '작업중단됨.', endDt = now() where pkey = ?", [pky]) ;
-    }
     con.end() ;
 }
 
@@ -145,7 +139,8 @@ function myquery(sql,args) {
   });
 }
 
-process.on('SIGINT',process.exit ); 
+process.on('SIGINT',() => { endprog; process.exit(0) } ); 
+process.on('SIGKILL',() => { console.log('KILL'); endprog; process.exit(0) } ); 
 
 process.on('SIGTERM', endprog );
 process.on('uncaughtException', (err) => { console.log(PGNM,'uncaughtException:', err) ; process.exit } ) ;

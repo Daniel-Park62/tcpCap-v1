@@ -74,7 +74,7 @@ async function dataHandle( rdata, qstream ) {
       // }
       const rtime = moment();
       const svctime = moment.duration(rtime.diff(stime)) / 1000.0 ;
-      recvData[0] = bufTrim(recvData[0]) ;
+      // recvData[0] = bufTrim(recvData[0]) ;
       let rDatas = Buffer.concat(recvData) ;
       const rsz = res.headers['content-length']  || rDatas.length ;
       

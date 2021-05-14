@@ -13,13 +13,18 @@ const sendhttp = require('./lib/sendHttp') ;
 
 const {tcode, cond, limit } = workerData ;
 // const [ tcode, cond, limit ] = process.argv ;
+
 console.log(workerData);
-let shttp = () => new sendhttp(tcode, cond, limit, con, 0, () => { 
-  con.end();
-  parentPort.close();
-  console.log("## (%d) End", threadId); 
-  process.exit(0) ;
-})  ;
+let param = { tcode : tcode, cond: cond, conn: con, limit:limit, interval: 0
+  , func: () => { 
+      con.end();
+      parentPort.close();
+      console.log("## (%d) End", threadId); 
+      process.exit(0) ;
+  }
+} ;
+
+let shttp = () => new sendhttp(param)  ;
 
 shttp() ;
 
