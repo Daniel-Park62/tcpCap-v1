@@ -7,20 +7,20 @@ const PGNM = '[sendWorker]';
 
 const  { parentPort, threadId,  workerData } = require('worker_threads');
 
-console.log("## Start send Data : ",threadId );
+console.log("## Start send Data threadId : ",threadId );
 
 const sendhttp = require('./lib/sendHttp') ;
 
-const {tcode, cond, limit } = workerData ;
+const {tcode, cond, dbskip, interval, limit } = workerData ;
 // const [ tcode, cond, limit ] = process.argv ;
 
 console.log(workerData);
-let param = { tcode : tcode, cond: cond, conn: con, limit:limit, interval: 0
+let param = { tcode : tcode, cond: cond, conn: con, dbskip:dbskip, limit:limit, interval: interval
   , func: () => { 
       con.end();
       parentPort.close();
       console.log("## (%d) End", threadId); 
-      process.exit(0) ;
+      // process.exit(0) ;
   }
 } ;
 
@@ -33,5 +33,5 @@ process.on('SIGTERM', end_work );
 
 function end_work() {
   console.log("%s Worker process end : [%d]",PGNM, threadId);
-  process.exit(0);
+  // process.exit(0);
 }

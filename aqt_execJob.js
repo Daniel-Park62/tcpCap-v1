@@ -72,7 +72,7 @@ function sendData(row){
     const sendhttp = require('./lib/sendHttp') ;
     console.log(PGNM,"pid=>", process.pid);
     let qstr = "UPDATE texecjob set resultstat = 2, msg = concat(ifnull(msg,''), IF(ISNULL(msg),'','\r\n'),? ), endDt = now() where pkey = " + row.pkey ;
-    let param = { tcode : row.tcode, cond: row.etc, conn: con, limit:'', interval: row.reqnum, func: (msg)=> con.query(qstr,[msg]) } ;
+    let param = { tcode : row.tcode, cond: row.etc, conn: con, limit:'', interval: row.reqnum, dbskip:row.dbskip == '1', func: (msg)=> con.query(qstr,[msg]) } ;
     sendhttp(param ) ;
     
   }) ;
@@ -88,24 +88,30 @@ function sendWorker(row){
     (err,d) => {
       if (!err) {
         tcnt = d[0].cnt ;
+
+        if (tcnt == 0) {
+          console.log(PGNM, qstr, "처리할 데이터가 없습니다.") ;
+          return ;
+        }
         pcnt = Math.ceil( tcnt / row.tnum ) ;
+        thread_start() ;
         
       } else 
         console.log(PGNM,err) ;
     }
   );
   
-  setTimeout(  () => {
-    console.log(PGNM, tcnt, pcnt);
-    let msgs = '';
+  function thread_start()  {
+    console.log(PGNM + "thread start ", tcnt, pcnt);
+    let msgs = "Thread 처리 총 " + tcnt + '건 ' + ( row.dbskip == '1' ? 'no Update ' : '')  ;
     for (let i = 0 ;  i < tcnt ;  i += pcnt ){
       let i2 = pcnt ;
       if ( tcnt < i+pcnt) i2 = ( tcnt - i ) ;
-
-      const wdata = { workerData: {tcode:row.tcode, cond: row.etc, limit: `${i},${i2}`  } };
+      let vlimit = row.dbskip == '1' ? "" : i + "," + i2 ;
+      const wdata = { workerData: {tcode:row.tcode, cond: row.etc, dbskip : row.dbskip == '1' , interval: row.reqnum , limit: vlimit  } };
       // const wdata =  [row.tcode, row.etc,  `${i},${pcnt}`  ];
       console.log(PGNM, wdata) ;
-      msgs  += wdata.workerData.limit," : ";
+      // msgs  += ':'+vlimit;
       const wkthread = new Worker(__dirname + '/aqt_sendWorker.js' ,  wdata ) 
       .on('exit', () => {
         threads.delete(wkthread);
@@ -113,7 +119,7 @@ function sendWorker(row){
         console.log(PGNM,`Thread exiting, ${threads.size} running...`);
         if (threads.size == 0) {
           console.log(PGNM, 'thread all ended !!')
-          const qstr = "UPDATE texecjob set resultstat = 2, msg = ?, endDt = now() where pkey = " + row.pkey ;
+          const qstr = "UPDATE texecjob set resultstat = 2, msg = concat(ifnull(msg,''), IF(ISNULL(msg),'','\r\n'),? ), endDt = now() where pkey = " + row.pkey ;
           con.query(qstr,[msgs]) ;
         }
       });
@@ -121,7 +127,7 @@ function sendWorker(row){
       // wkthread.postMessage(wdata) ;
 
     }
-  },1000) ;
+  } ;
 
 }
 
@@ -140,7 +146,7 @@ function myquery(sql,args) {
 }
 
 process.on('SIGINT',() => { endprog; process.exit(0) } ); 
-process.on('SIGKILL',() => { console.log('KILL'); endprog; process.exit(0) } ); 
+// process.on('SIGKILL',() => { console.log('KILL'); endprog; process.exit(0) } ); 
 
 process.on('SIGTERM', endprog );
 process.on('uncaughtException', (err) => { console.log(PGNM,'uncaughtException:', err) ; process.exit } ) ;
