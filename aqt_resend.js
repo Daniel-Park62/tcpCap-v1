@@ -6,8 +6,8 @@ const moment = require('moment');
 const mrdb = require('./db/db_con');
 
 const http = require('http');
-moment.prototype.toSqlfmt = function () {
-    return this.format('YYYY-MM-DD HH:mm:ss.SSSSSS');
+moment.prototype.toSqlfmt = function (ms) {
+    return this.format('YYYY-MM-DD HH:mm:ss.' + ms);
 };
 
 const con = mrdb.init() ;
@@ -15,7 +15,6 @@ const con = mrdb.init() ;
 // const client = new net.Socket();
 
 async function dataHandle( rdata, qstream ) {
-  let stime  = moment() ;  
   let uri = /^(GET|POST|DELETE|PUT|PATCH)\s+(\S+)\s/s.exec(rdata.sdata.toString())[2];
   if ( uri.indexOf('%') == -1) uri = encodeURI(uri) ;
 
@@ -45,9 +44,11 @@ async function dataHandle( rdata, qstream ) {
         }
     }
   });
+  let stime  = moment() ;  
+  let stimem = Math.ceil(process.hrtime()[1] / 1000) ;
   // console.log(options.headers) ;
   const req = http.request(options, function (res) {
-    stime  = moment() ;
+    // stime  = moment() ;
     // console.log('STATUS: ' + res.statusCode);
     // console.log('HEADERS: ' + JSON.stringify(res.headers));
     let resHs = 'HTTP/' + res.httpVersion + ' ' + res.statusCode + ' ' + res.statusMessage + "\r\n" ;
@@ -73,6 +74,7 @@ async function dataHandle( rdata, qstream ) {
       //   return ;
       // }
       const rtime = moment();
+      const rtimem = Math.ceil(process.hrtime()[1] / 1000) ;
       const svctime = moment.duration(rtime.diff(stime)) / 1000.0 ;
       // recvData[0] = bufTrim(recvData[0]) ;
       let rDatas = Buffer.concat(recvData) ;
@@ -82,7 +84,7 @@ async function dataHandle( rdata, qstream ) {
       // let new_d = Buffer.from(resdata,'binary') ;
       con.query("UPDATE ttcppacket SET \
                  rdata = ?, sdata=?, stime = ?, rtime = ?,  elapsed = ?, rcode = ? ,rhead = ?, rlen = ? ,cdate = now() where pkey = ? " 
-                , [rDatas,Buffer.from(new_shead), stime.toSqlfmt(), rtime.toSqlfmt(), svctime, res.statusCode ,resHs,  rsz, rdata.pkey]
+                , [rDatas,Buffer.from(new_shead), stime.toSqlfmt(stimem), rtime.toSqlfmt(rtimem), svctime, res.statusCode ,resHs,  rsz, rdata.pkey]
                 , (err, result) => {
                     if (err) 
                       console.error('update error:',rdata.pkey, err);
@@ -95,7 +97,7 @@ async function dataHandle( rdata, qstream ) {
     });
   });
   if ( pi > 0 && /POST|PUT|DELETE|PATCH/.test(rdata.method)  ) {
-      const sdata = rdata.sdata.slice(pi) ;
+      const sdata = rdata.sdata.slice(pi+4) ;
       // console.log(sdata.toString()) ;
       req.write(sdata) ;
       new_shead += '\r\n' + sdata.toString() ;
@@ -103,11 +105,13 @@ async function dataHandle( rdata, qstream ) {
   req.on('error', function (e) { 
     console.log(PGNM,'Problem with request: ', e.message, e.errno);
     const rtime = moment();
+    const rtimem = Math.ceil(process.hrtime()[1] / 1000) ;
+
     const svctime = moment.duration(rtime.diff(stime)) / 1000.0 ;
 
     con.query("UPDATE ttcppacket SET \
                   sdata = ? , stime = ?, rtime = ?,  elapsed = ?, rcode = ?,  rhead = ? ,cdate = now() where pkey = ?"
-                , [Buffer.from(new_shead),stime.toSqlfmt(), rtime.toSqlfmt(), svctime, 999, e.message, rdata.pkey]
+                , [Buffer.from(new_shead),stime.toSqlfmt(stimem), rtime.toSqlfmt(rtimem), svctime, 999, e.message, rdata.pkey]
                 , (err, result) => {
                     if (err) 
                       console.error('update error:',err);
@@ -122,7 +126,7 @@ async function dataHandle( rdata, qstream ) {
 }
 
 console.log("%s * start Resend check (%d 초 단위)", PGNM,  Dsec) ;
-
+const sendhttp = require('./lib/sendHttp') ;
 setInterval(() => {
 
     const qstream = con.queryStream("SELECT pkey FROM trequest order by reqDt  " );
@@ -144,7 +148,7 @@ setInterval(() => {
                     qstream.resume();
                 } else {
                     console.log("%s ID (%d) Re-send", PGNM, row.pkey);
-                    await dataHandle(row2[0], qstream);
+                    dataHandle(row2[0], qstream );
                     con.query("DELETE FROM trequest where pkey = ?", [row.pkey]) ;
                 }
             }

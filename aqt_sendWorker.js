@@ -11,18 +11,27 @@ console.log("## Start send Data threadId : ",threadId );
 
 const sendhttp = require('./lib/sendHttp') ;
 
-const {tcode, cond, dbskip, interval, limit } = workerData ;
-// const [ tcode, cond, limit ] = process.argv ;
+// const {tcode, cond, dbskip, interval, limit, loop } = workerData ;
+let param = workerData ;
 
-console.log(workerData);
-let param = { tcode : tcode, cond: cond, conn: con, dbskip:dbskip, limit:limit, interval: interval
-  , func: () => { 
-      con.end();
-      parentPort.close();
-      console.log("## (%d) End", threadId); 
-      // process.exit(0) ;
-  }
+console.log(param);
+
+param.conn = con ;
+param.func = () => { 
+  param.conn.end();
+  parentPort.close();
+  console.log(PGNM + "%s ## (%d) End",param.tcode, threadId); 
+  // process.exit(0) ;
 } ;
+
+// let param = { tcode : tcode, cond: cond, conn: con, dbskip:dbskip, limit:limit, interval: interval, loop: loop
+//   , func: () => { 
+//       con.end();
+//       parentPort.close();
+//       console.log(PGNM + "%s ## (%d) End",tcode, threadId); 
+//       // process.exit(0) ;
+//   }
+// } ;
 
 let shttp = () => new sendhttp(param)  ;
 
