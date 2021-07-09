@@ -8,9 +8,9 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build1": "pkg  --targets node10-win-x64 -o aqtCapToDb.exe aqt_ToDb.js",
-    "build2": "pkg  --targets node10-win-x64 -o aqtSendHttp.exe aqt_sendhttp.js",
-    "build3": "pkg  --targets node10-win-x64 -o aqtresend.exe aqt_resend.js",
+    "build": "npm run capdb && npm run sendhttp",
+    "capdb": "uglifyjs lib/capToDb.js -o ../aqthttp/lib/capToDb.js -c  ",
+    "sendhttp": "uglifyjs lib/sendHttp.js -o ../aqthttp/lib/sendHttp.js -c  ",
     "build4": "pkg  --targets node10-win-x64 -o aqtExecJob.exe aqt_execjob.js"
   },
   "author": "",
@@ -20,7 +20,6 @@
     "g": "^2.0.1",
     "jsonwebtoken": "^8.5.1",
     "mariadb": "^2.5.3",
-    "moment": "^2.29.1",
-    "npm": "^7.9.0"
+    "moment": "^2.29.1"
   }
 }

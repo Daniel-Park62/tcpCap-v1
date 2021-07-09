@@ -92,7 +92,8 @@ function sendWorker(row){
 
         if (tcnt == 0) {
           console.log(PGNM, qstr, "처리할 데이터가 없습니다.") ;
-          con.query("UPDATE texecjob set resultstat = 2, msg = concat(?, now(),':', '처리건수 0\r\n' ), endDt = now() where pkey = ?", [row.pkey]);
+          con.query("UPDATE texecjob set resultstat = 2, msg = concat(msg, ?, now(),':', '처리건수 0\r\n' ), \
+                  endDt = now() where pkey = ?", ["처리할 데이터가 없습니다.", row.pkey]);
           return ;
         }
         pcnt = Math.ceil( tcnt / row.tnum ) ;
@@ -100,7 +101,7 @@ function sendWorker(row){
         
       } else {
         console.log(PGNM,err) ;
-        con.query("UPDATE texecjob set resultstat = 3, msg = concat(?,now(),':', ?,'\r\n'), endDt = now() where pkey = ?", [row.msg, err, row.pkey]);
+        con.query("UPDATE texecjob set resultstat = 3, msg = concat(msg,now(),':', ?,'\r\n'), endDt = now() where pkey = ?", [err, row.pkey]);
       }
     }
   );
