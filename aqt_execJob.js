@@ -53,7 +53,8 @@ setInterval( () => {
 function importData(row){
   const cdb = require('./lib/capToDb') ;
   let qstr = "UPDATE texecjob set resultstat = 2, msg = concat(?,now(),':',?,'\r\n' ), endDt = now() where pkey = " + row.pkey ;
-  cdb(row.tcode, row.in_file, con, (msg) => { con.query(qstr,[row.msg, msg]) }  ) ;
+  let cdbe = () => new cdb(row.tcode, row.in_file, con, (msg) => { con.query(qstr,[row.msg, msg]) }  ) ;
+  cdbe() ;
 }
 
 function sendData(row){
